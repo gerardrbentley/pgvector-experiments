@@ -19,8 +19,7 @@ st.set_page_config(
 st.header("Streamlit Documentation Search App 🎈🤖")
 
 conn = st.experimental_connection("database", type="sql", pool_pre_ping=True)
-res = conn.query("SELECT * FROM documents;")
-st.write(res)
+
 with st.form("Question"):
     question = st.text_area(
         "Enter your Streamlit Question:", "How do I connect to a database?"

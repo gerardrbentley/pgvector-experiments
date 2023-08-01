@@ -1,4 +1,3 @@
-
 from random import randint
 import tiktoken
 from typing import NamedTuple
@@ -33,11 +32,14 @@ def cached_embed(text: str) -> EmbeddingResponse:
     return asyncio.run(get_embedding(text))
 
 
-
 # Attempt to call openai Embeddings endpoint with input text or tokens
-async def get_embedding(text_or_tokens: Union[str, tuple[int]], retry_attempt=1) -> EmbeddingResponse:
+async def get_embedding(
+    text_or_tokens: Union[str, tuple[int]], retry_attempt=1
+) -> EmbeddingResponse:
     try:
-        response = await openai.Embedding.acreate(input=text_or_tokens, model=EMBEDDING_MODEL)
+        response = await openai.Embedding.acreate(
+            input=text_or_tokens, model=EMBEDDING_MODEL
+        )
         embedding = response["data"][0]["embedding"]
         # Allow this to fail gracefully
         total_tokens = response.get("usage", {}).get("total_tokens", 0)
@@ -45,8 +47,8 @@ async def get_embedding(text_or_tokens: Union[str, tuple[int]], retry_attempt=1)
     except openai.APIError as e:
         if retry_attempt >= 5:
             raise e
-        asyncio.sleep((randint(50, 100) / 100) + (2**retry_attempt))
-        return get_embedding(text_or_tokens, retry_attempt + 1)
+        await asyncio.sleep((randint(50, 100) / 100) + (2**retry_attempt))
+        return await get_embedding(text_or_tokens, retry_attempt + 1)
     except Exception as e:
         logging.exception(e, stack_info=True)
         raise e
@@ -89,6 +91,7 @@ async def embed_long_text(text: str) -> EmbeddingResponse:
     )  # normalizes length to 1
     return EmbeddingResponse(embedding=chunk_embeddings, total_tokens=total_tokens)
 
+
 async def embed_document(file_path: Path) -> DocumentsEntry:
     file_text = file_path.read_text()
     embedding_response = await embed_long_text(file_text)
@@ -103,20 +106,27 @@ async def embed_document(file_path: Path) -> DocumentsEntry:
         },
     )
 
+
 async def gather_with_concurrency(n, *coros):
     semaphore = asyncio.Semaphore(n)
+
     async def sem_coro(coro):
         async with semaphore:
             return await coro
+
     return await asyncio.gather(*(sem_coro(c) for c in coros))
 
-async def embed_directory(directory_path: str, num_workers=3, return_batch_size=10) -> Iterable[tuple[DocumentsEntry]]:
+
+async def embed_directory(
+    directory_path: str, num_workers=1, return_batch_size=10
+) -> Iterable[tuple[DocumentsEntry]]:
     tasks = [
         asyncio.ensure_future(embed_document(file_path))
         for file_path in Path(directory_path).rglob("*.md")
     ]
     results = await gather_with_concurrency(num_workers, *tasks)
     return batched(results, return_batch_size)
+
 
 def count_directory_tokens(directory_path: str) -> int:
     total = 0

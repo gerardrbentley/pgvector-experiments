@@ -18,6 +18,7 @@ init_db_script = Path("pg/init_db.sql").read_text()
 
 conn = st.experimental_connection("database", type="sql")
 
+
 def echo_query(q: str):
     st.subheader("query:")
     st.write(
@@ -30,6 +31,7 @@ def echo_query(q: str):
     result = conn.query(q)
     result
 
+
 if st.button("Initialize DB"):
     with conn.session as s:
         s.execute(text(init_db_script))
@@ -37,7 +39,6 @@ if st.button("Initialize DB"):
 
 with st.expander("Show initialization code"):
     st.code(init_db_script)
-
 
 
 with st.expander("Show Documents DB Data"):
@@ -56,17 +57,22 @@ with st.expander("Show Documents DB Data"):
     result
 
 with st.form("directory"):
-    documents_directory = st.text_input("Documents Directory", "docs/content/library/get-started")
+    documents_directory = st.text_input("Documents Directory", "docs")
+    num_tokens = count_directory_tokens(documents_directory)
+    st.warning(
+        f"This directory will cost ~`{num_tokens}` tokens or ${(num_tokens * (0.0001 / 1000)):.4f}"
+    )
     is_submitted = st.form_submit_button()
-num_tokens = count_directory_tokens(documents_directory)
-st.warning(f"This directory will cost ~`{num_tokens}` tokens or ${(num_tokens * (0.0001 / 1000)):.4f}")
 if not is_submitted:
     st.stop()
 
+st.toast("Embedding Docs")
 docs_batches = asyncio.run(embed_directory(documents_directory))
-with conn.session as s:
-    with s.connection().connection.cursor() as cursor:
-        for docs in docs_batches:
+
+for i, docs in enumerate(docs_batches):
+    st.toast(f"Saving to Database Batch {i + 1}")
+    with conn.session as s:
+        with s.connection().connection.cursor() as cursor:
             with cursor.copy(
                 "COPY documents (content, metadata, embedding) FROM STDIN;"
             ) as copy:
@@ -79,7 +85,7 @@ with conn.session as s:
                             to_db(doc.embedding, 1536),
                         )
                     )
-    s.execute(text("commit;"))
+        s.execute(text("commit;"))
 
 q = """\
     SELECT *
@@ -87,11 +93,11 @@ q = """\
     """
 
 st.write(
-        f"""\
+    f"""\
 ```sql
 {q}          
 ```"""
-    )
+)
 st.subheader("result:")
 result = conn.query(q, ttl=1)
 result
